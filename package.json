@@ -42,10 +42,10 @@
     "pack:local": "npm run check && node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && npm pack --pack-destination artifacts"
   },
   "dependencies": {
-    "@modelcontextprotocol/client": "2.2.0",
-    "@modelcontextprotocol/server": "2.3.1",
-    "fflate": "0.8.2",
-    "zod": "4.4.3"
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "fflate": "0.8.3",
+    "zod": "4.6.7"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",
@@ -88,5 +88,8 @@
       "types": "./dist/types/host/index.d.ts",
       "default": "./dist/host.mjs"
     }
+  },
+  "overrides": {
+    "zod": "4.6.7"
   }
 }
