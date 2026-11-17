@@ -32,4 +32,4 @@ npm run pack:local
 
 新产品使用 DSH 数据目录下独立的 `pupu-notes` 根目录，与旧版 `pupu-dsh` 并行。导入是复制流程：预检会展示角色、人物、计数、版本和建议路径；确认后才建立新角色库。重复来源按内容指纹识别，只把变化资料放入“导入补充”，不会覆盖已经由 AI 整理过的笔记。旧插件、旧会话和旧数据不会被接管或删除。
 
-完整安装、卸载和回滚步骤见 [docs/INSTALL.md](docs/INSTALL.md)。当前可验证范围与未完成的真实 DSH 验收见 [docs/TEST-REPORT.md](docs/TEST-REPORT.md)。
+完整安装、卸载和回滚步骤见 [docs/INSTALL.md](docs/INSTALL.md)。真实 DSH 验收、模型对照结果及验证边界见 [docs/TEST-REPORT.md](docs/TEST-REPORT.md)。

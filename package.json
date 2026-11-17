@@ -4,6 +4,7 @@
   "description": "Independent character notebooks and autonomous memory tools for DeepSeek Harness",
   "type": "module",
   "license": "MIT",
+  "icon": "./icon.svg",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -17,6 +18,7 @@
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
+    "icon.svg",
     "docs/"
   ],
   "dsh": {
@@ -82,6 +84,7 @@
   "exports": {
     "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./icon": "./icon.svg",
     "./client": {
       "default": "./dist/client.js"
     },
