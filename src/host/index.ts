@@ -20,6 +20,7 @@ import { assertDispatchedPersona, installPersona } from './persona.js';
 import { generateMemoryResponse } from './generate.js';
 import { PupuNotesRemote } from './remote.js';
 import { ReplayBarrier } from './replay.js';
+import { changeBlankSession, selectionState } from './session-selector.js';
 
 export const name = 'pupu-notes';
 export const inject = ['agents', 'sessionPersistence', 'sessionController', 'systemPrompt', 'tools', 'llm', 'typert'];
@@ -30,12 +31,15 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   const chains = new Map<string, Promise<void>>();
   const installed = new Map<Agent, { dispose: () => void }>();
   const installing = new Map<Agent, Promise<void>>();
-  const temporaryBindings = new Map<string, Binding>();
+  const temporaryBindings = new Map<string, Binding | null>();
+  const blockedSelections = new Map<Agent, () => void>();
   let closing = false;
   let product: ProductService;
 
   function bindingFor(sessionId: string): Binding | undefined {
-    return product.binding(sessionId) ?? temporaryBindings.get(sessionId);
+    return temporaryBindings.has(sessionId)
+      ? temporaryBindings.get(sessionId) ?? undefined
+      : product.binding(sessionId);
   }
   function report(sessionId: string, error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
@@ -70,6 +74,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
     }
   }
   async function attach(agent: Agent, binding: Binding): Promise<void> {
+    if (closing) throw new Error('蒲蒲笔记正在关闭，请重新启用后重试。');
     if (installed.has(agent)) return;
     const pending = installing.get(agent);
     if (pending) return pending;
@@ -81,6 +86,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
         () => product.role(role.id));
       const disposers: (() => void)[] = [disposePersona];
       try {
+        if (closing) throw new Error('蒲蒲笔记正在关闭，请重新启用后重试。');
         disposers.push(agent.ctx.tools.register({
           ...notesToolSchema,
           name: 'pupu_notes',
@@ -104,6 +110,8 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
           yield* next();
         }));
         installed.set(agent, { dispose: () => { for (const dispose of disposers.reverse()) dispose(); } });
+        blockedSelections.get(agent)?.();
+        blockedSelections.delete(agent);
       } catch (error) {
         for (const dispose of disposers.reverse()) dispose();
         throw error;
@@ -114,6 +122,54 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   }
 
   product = new ProductService(dataDirectory, {
+    sessionState: async sessionId => {
+      const agent = ctx.agents.get(SessionId(sessionId));
+      if (!agent) throw new Error('会话尚未载入，请打开这个会话后重试。');
+      const state = selectionState(agent);
+      const needsRepair = blockedSelections.has(agent);
+      return {
+        locked: state.locked, busy: state.running, needsRepair,
+        ...(needsRepair ? { error: '角色身份未完整恢复，请修复当前身份后继续。' } : {}),
+      };
+    },
+    configureSession: async (sessionId, nextBinding, commit) => {
+      const agent = ctx.agents.get(SessionId(sessionId));
+      if (!agent) throw new Error('会话尚未载入，请打开这个会话后重试。');
+      const previous = product.binding(sessionId);
+      const sameIdentityRepair = blockedSelections.has(agent) &&
+        previous?.roleId === nextBinding?.roleId && previous?.speakerName === nextBinding?.speakerName;
+      await changeBlankSession(agent, async signal => {
+        await installing.get(agent);
+        if (closing) throw new Error('蒲蒲笔记正在关闭，请重新启用后重试。');
+        installed.get(agent)?.dispose();
+        installed.delete(agent);
+        temporaryBindings.set(sessionId, nextBinding);
+        try {
+          if (nextBinding) await attach(agent, nextBinding);
+          signal.throwIfAborted();
+          commit();
+          temporaryBindings.delete(sessionId);
+          blockedSelections.get(agent)?.();
+          blockedSelections.delete(agent);
+        } catch (error) {
+          installed.get(agent)?.dispose();
+          installed.delete(agent);
+          temporaryBindings.delete(sessionId);
+          if (previous && !closing) {
+            try { await attach(agent, previous); }
+            catch (restoreError) {
+              if (closing) throw error;
+              blockedSelections.get(agent)?.();
+              blockedSelections.set(agent, agent.ctx.on('llm/stream', async function* () {
+                throw new Error('角色身份恢复失败，请在发送消息前重新应用会话身份。');
+              }));
+              report(sessionId, restoreError);
+            }
+          }
+          throw error;
+        }
+      }, { sameIdentityRepair });
+    },
     flushSession: async sessionId => { await chains.get(sessionId); },
     replaySession: async sessionId => {
       const binding = bindingFor(sessionId);
@@ -130,10 +186,16 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
     },
     generate: request => generateMemoryResponse(options => ctx.llm.stream(options), request),
     createSession: async request => {
+      let cwd = request.cwd;
+      if (request.sourceSessionId && !request.workspaceId) {
+        const source = await ctx.sessionController.inspect(SessionId(request.sourceSessionId));
+        if (!source.meta.cwd) throw new Error('原会话没有工作目录，请从设置页指定工作区新建对话。');
+        cwd = source.meta.cwd;
+      }
       const sessionId = SessionId(randomUUID());
       const created = await ctx.sessionController.create({
         sessionId,
-        ...(request.workspaceId ? { workspaceId: request.workspaceId as never } : { cwd: request.cwd ?? process.cwd() }),
+        ...(request.workspaceId ? { workspaceId: request.workspaceId as never } : { cwd: cwd ?? process.cwd() }),
       });
       const binding: Binding = {
         sessionId: created.sessionId,
@@ -158,9 +220,11 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   });
   ctx.effect(() => async () => {
     closing = true;
+    await Promise.allSettled([...installing.values(), ...chains.values()]);
     for (const item of installed.values()) item.dispose();
     installed.clear();
-    await Promise.allSettled([...installing.values(), ...chains.values()]);
+    for (const dispose of blockedSelections.values()) dispose();
+    blockedSelections.clear();
     await product.dispose();
   });
   new PupuNotesRemote(ctx, async request => {
@@ -190,6 +254,8 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   ctx.on('agent/disposed', ({ agent }) => {
     installed.get(agent)?.dispose();
     installed.delete(agent);
+    blockedSelections.get(agent)?.();
+    blockedSelections.delete(agent);
   });
 
   // Reserve every chain synchronously before awaiting the first cold read.

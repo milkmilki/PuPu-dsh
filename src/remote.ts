@@ -4,7 +4,7 @@ import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-
 /** One explicit Host entry point, shared by the native UI and Host registry. */
 export const UiRequestSchema = z.strictObject({
   action: z.enum([
-    'state', 'createRole', 'updateRole', 'createSession', 'notes',
+    'state', 'createRole', 'updateRole', 'createSession', 'sessionState', 'bindSession', 'notes',
     'versions', 'undo', 'manual', 'retry', 'stop',
     'previewImport', 'confirmImport', 'export',
   ]),

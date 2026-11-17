@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Binding, EngineClient, ImportSelection, Json, JsonObject, ModelRoute, Role, Task, TranscriptEntry, Trigger, UiRequest } from './contracts.js';
+import type { Binding, EngineClient, ImportSelection, Json, JsonObject, ModelRoute, Role, SessionSelection, Task, TranscriptEntry, Trigger, UiRequest } from './contracts.js';
 import { Catalog } from './catalog.js';
 import { EnginePool } from './mcp/client.js';
 import { notesCommandSchema } from './mcp/schema.js';
@@ -9,9 +9,11 @@ import { TaskRunner, type Generate } from './runner.js';
 export type { GenerateInput, GenerateResult } from './runner.js';
 export interface ProductAdapter {
   generate: Generate;
-  createSession(input: { roleId: string; name: string; speakerName: string; cwd?: string; workspaceId?: string; model?: ModelRoute }): Promise<string>;
+  createSession(input: { roleId: string; name: string; speakerName: string; cwd?: string; workspaceId?: string; sourceSessionId?: string; model?: ModelRoute }): Promise<string>;
   flushSession?(sessionId: string): Promise<void>;
   replaySession?(sessionId: string): Promise<void>;
+  sessionState?(sessionId: string): Promise<{ locked: boolean; busy: boolean; needsRepair?: boolean; error?: string }>;
+  configureSession?(sessionId: string, binding: Binding | null, commit: () => void): Promise<void>;
 }
 export class ProductService {
   readonly catalog: Catalog;
@@ -126,6 +128,41 @@ export class ProductService {
   }
   async dispatch(request: UiRequest): Promise<unknown> {
     const input = request.input ?? {};
+    if (request.action === 'sessionState' || request.action === 'bindSession') {
+      if (typeof input.sessionId !== 'string' || !input.sessionId.trim() || /[\x00-\x1f\x7f]/.test(input.sessionId))
+        throw new Error('会话标识无效');
+      const sessionId = input.sessionId;
+      if (!this.adapter.sessionState) throw new Error('当前宿主不支持会话身份选择');
+      if (request.action === 'bindSession') {
+        if (!this.adapter.configureSession) throw new Error('当前宿主不支持修改空会话身份');
+        if (input.roleId !== null && typeof input.roleId !== 'string') throw new Error('请选择角色或普通助手');
+        const selected = input.roleId === null ? undefined : this.role(input.roleId);
+        const speaker = typeof input.speakerName === 'string' ? input.speakerName.trim() : selected?.speakerName ?? '';
+        if (selected && (!speaker || speaker.length > 100 || /[\x00-\x1f\x7f]/.test(speaker)))
+          throw new Error('说话者姓名需要 1–100 个可见字符');
+        const previous = this.binding(sessionId);
+        const same = previous?.roleId === selected?.id && (!selected || previous?.speakerName === speaker);
+        const next: Binding | null = selected ? {
+          sessionId, roleId: selected.id, speakerName: speaker,
+          createdAt: same && previous ? previous.createdAt : new Date().toISOString(),
+        } : null;
+        const status = await this.adapter.sessionState(sessionId);
+        if (!same || status.needsRepair) {
+          await this.adapter.configureSession(sessionId, next, () => this.catalog.saveBinding(sessionId, next, previous));
+          this.hostErrors.delete(sessionId);
+        }
+      }
+      const status = await this.adapter.sessionState(sessionId);
+      const roles = this.roles();
+      const result: SessionSelection = {
+        sessionId, roles, binding: this.binding(sessionId) ?? null,
+        locked: status.locked, busy: status.busy,
+        speakers: [...new Set([...roles.map(role => role.speakerName), ...this.bindings().map(binding => binding.speakerName)])],
+        needsRepair: status.needsRepair ?? false,
+        ...(status.error ? { error: status.error } : {}),
+      };
+      return result;
+    }
     if (request.action === 'state') {
       const role = request.roleId ? this.role(request.roleId) : this.roles()[0];
       let tasks: Task[] = [], stats: JsonObject = {};
@@ -210,6 +247,7 @@ export class ProductService {
           roleId: role.id, name: role.name, speakerName,
           cwd: typeof input.cwd === 'string' ? input.cwd : undefined,
           workspaceId: typeof input.workspaceId === 'string' ? input.workspaceId : undefined,
+          sourceSessionId: typeof input.sourceSessionId === 'string' ? input.sourceSessionId : undefined,
           model: role.lastModel,
         });
         this.catalog.bind(sessionId, role.id, speakerName);

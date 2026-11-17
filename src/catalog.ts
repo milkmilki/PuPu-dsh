@@ -53,6 +53,25 @@ export class Catalog {
     this.db.prepare('INSERT INTO bindings VALUES(?,?,?)').run(sessionId, roleId, JSON.stringify(binding));
     return binding;
   }
+  /** The Host must reserve a blank Agent before committing a new selection. */
+  saveBinding(sessionId: string, next: Binding | null, expected: Binding | undefined) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const current = this.binding(sessionId);
+      if (JSON.stringify(current) !== JSON.stringify(expected)) throw new Error('会话身份已变化，请刷新后重试');
+      if (next) {
+        this.role(next.roleId);
+        if (next.sessionId !== sessionId || !next.speakerName.trim()) throw new Error('会话身份无效');
+        this.db.prepare(`INSERT INTO bindings VALUES(?,?,?)
+          ON CONFLICT(session_id) DO UPDATE SET role_id=excluded.role_id,data=excluded.data`)
+          .run(sessionId, next.roleId, JSON.stringify(next));
+      } else this.db.prepare('DELETE FROM bindings WHERE session_id=?').run(sessionId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
   importRecord(sourceKey: string): { roleId: string; data: unknown } | undefined {
     const row = this.db.prepare('SELECT role_id,data FROM imports WHERE source_key=?').get(sourceKey) as { role_id: string; data: string } | undefined;
     return row ? { roleId: row.role_id, data: JSON.parse(row.data) } : undefined;

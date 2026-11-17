@@ -7,6 +7,7 @@
 ## 当前实现
 
 - DSH Web 原生设置页：角色、说话者、新建会话、角色卡、目录和 Markdown 编辑器。
+- 聊天窗口选择器：每个空 session 分别选择角色和说话者，支持新姓名；开聊后固定身份，可另开对话。用法和源码见 [docs/SESSION-SELECTOR.md](docs/SESSION-SELECTOR.md)。
 - DSH 身份段落的角色级替换：角色卡在下一轮对话生效，保留工具、工作目录、权限和 Provider 路由。
 - 独立 stdio MCP：`pupu-notes-mcp --root <角色目录>`，工具名 `notes`。
 - DSH 会话工具：`pupu_notes`，只暴露当前绑定角色的 `view/search/create/edit/move/delete/sources`。

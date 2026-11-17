@@ -11,15 +11,17 @@ npm install
 npm run pack:local
 ```
 
-将生成的 `artifacts/dsh-pupu-notes-0.1.0.tgz` 安装到测试 profile（把 `web` 换成你实际使用的 profile）：
+将生成的 `artifacts/dsh-pupu-notes-0.1.1.tgz` 安装到测试 profile（把 `web` 换成你实际使用的 profile）：
 
 ```powershell
-dsh plugin --profile web add "D:\ProjectICreate\PuPuBot\pupu-notes\artifacts\dsh-pupu-notes-0.1.0.tgz"
+dsh plugin --profile web add "D:\ProjectICreate\PuPuBot\pupu-notes\artifacts\dsh-pupu-notes-0.1.1.tgz"
 ```
 
 `cordis.patch.yml` 启用 bundle。没有 HMR 的 profile 需要重启 DSH，才能加载新的 Host 和原生 UI；安装前已经运行的旧会话继续使用旧插件。安装后在 DSH 侧栏的“插件”页确认“蒲蒲笔记”已启用，再打开“设置 → 蒲蒲笔记”。
 
 插件使用独立数据根，不会读写旧 `pupu-dsh`。首次创建角色会生成独立角色目录。你可以在页面中创建新角色，也可以预检旧 SQLite / `.pupumem` 后复制导入。人物映射必须由安装者确认，重复导入不会自动合并同名人物。
+
+0.1.1 还会在聊天输入框旁显示角色和说话者选择器。先选择并“应用到当前对话”，再发送第一条消息；开聊后双方身份固定。详见 [SESSION-SELECTOR.md](SESSION-SELECTOR.md)。
 
 ## 独立 MCP
 

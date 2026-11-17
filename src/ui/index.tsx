@@ -3,15 +3,18 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client';
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client';
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type {} from '@deepseek-ai/dsh-client-ui-session/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { UiRequest } from '../contracts.js';
 import { TYPERT_REMOTE } from '../remote.js';
 import { Dashboard } from './Dashboard.js';
+import { SessionSelector } from './SessionSelector.js';
 import { styles } from './styles.js';
 
 export const inject = ['slots', 'remote', 'uiWorkspace'];
 
-/** One native settings page, with explicit Remote ownership and scoped CSS. */
+/** Native settings and per-session controls share an explicitly owned Remote. */
 export async function apply(ctx: Context): Promise<void> {
   await ctx.remote.$mount(TYPERT_REMOTE);
   // Each mounted namespace is a Cordis child service. Acquire it after mount so
@@ -45,4 +48,11 @@ function registerPage(ctx: Context): void {
       openSession: (id: string) => ctx.uiWorkspace.openSession(id as SessionId),
     }),
   }, Dashboard));
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+    name: 'conversation.input.left', id: 'pupu-notes:session-identity', order: 20,
+    inject: () => ({
+      api,
+      openSession: (id: string) => ctx.uiWorkspace.openSession(id as SessionId),
+    }),
+  }, SessionSelector));
 }

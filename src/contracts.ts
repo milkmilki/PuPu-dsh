@@ -12,6 +12,16 @@ export interface Role {
   createdAt: string;
 }
 export interface Binding { sessionId: string; roleId: string; speakerName: string; createdAt: string }
+export interface SessionSelection {
+  sessionId: string;
+  roles: Role[];
+  binding: Binding | null;
+  locked: boolean;
+  busy: boolean;
+  speakers: string[];
+  needsRepair: boolean;
+  error?: string;
+}
 export interface DialogueInput {
   sessionId: string;
   messageId: string;
@@ -132,7 +142,7 @@ export interface UiState {
   error?: string;
 }
 export interface UiRequest {
-  action: 'state' | 'createRole' | 'updateRole' | 'createSession' | 'notes'
+  action: 'state' | 'createRole' | 'updateRole' | 'createSession' | 'sessionState' | 'bindSession' | 'notes'
     | 'versions' | 'undo' | 'manual' | 'retry' | 'stop'
     | 'previewImport' | 'confirmImport' | 'export';
   roleId?: string;
