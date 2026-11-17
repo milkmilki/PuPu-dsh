@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import type { Json } from '../contracts.js';
 import {
   hash, readOnly, recordKey, safeName, tableSnapshot,
   type Projection, type RecordRef, type Row, type Snapshot,
@@ -9,7 +10,8 @@ const LEGACY_TABLES = new Set([
   'person_facts', 'scheduled_tasks', 'maintenance_runs', 'memory_mutations',
   'event_threads', 'event_thread_aliases', 'event_thread_rollups', 'event_steps',
   'people', 'event_people', 'fact_evidence', 'engine_meta', 'message_receipts',
-  'memory_jobs', 'engine_audit', 'memory_conflicts', 'summary_rollups', 'archived_summaries',
+  'memory_jobs', 'model_requests', 'review_triggers', 'engine_audit', 'memory_conflicts',
+  'summary_rollups', 'archived_summaries',
 ]);
 export function readLegacySnapshot(path: string): Snapshot {
   const db = readOnly(path);
@@ -83,6 +85,16 @@ function relatedRecords(snapshot: Snapshot, initial: RecordRef[]): RecordRef[] {
     if (ranges.some(range => Number.isSafeInteger(range.start) && Number.isSafeInteger(range.end) &&
       Number(message.id) >= range.start && Number(message.id) <= range.end &&
       (!range.session || String(message.session_id) === range.session))) add(table, message, number);
+  });
+  const selectedMessages = new Set([...selected.values()]
+    .filter(ref => ref.table === 'messages' || ref.table === 'archived_messages')
+    .map(ref => index.get(`${ref.table}:${ref.key}`))
+    .filter((row): row is Row => !!row)
+    .map(row => JSON.stringify([String(row.session_id), Number(row.id)])));
+  (snapshot.message_receipts ?? []).forEach((receipt, number) => {
+    if (receipt.message_id !== null && receipt.message_id !== undefined &&
+      selectedMessages.has(JSON.stringify([String(receipt.session_id), Number(receipt.message_id)])))
+      add('message_receipts', receipt, number);
   });
   return [...selected.values()];
 }
@@ -171,7 +183,7 @@ export function projectLegacy(
   (snapshot.scheduled_tasks ?? []).forEach((row, number) => add('随记/过去的提醒.md',
     `## ${row.title || '过去记下的安排'}\n\n${row.instruction || ''}\n\n${row.run_at ? `原定时间：${row.run_at}\n\n` : ''}这是一条历史资料，不会执行提醒。\n\n`,
     'scheduled_tasks', recordKey(row, number)));
-  for (const table of ['maintenance_runs', 'memory_mutations', 'engine_audit', 'memory_jobs']) {
+  for (const table of ['maintenance_runs', 'memory_mutations', 'engine_audit', 'memory_jobs', 'model_requests', 'review_triggers', 'engine_meta']) {
     const rows = snapshot[table] ?? [];
     if (!rows.length) continue;
     const path = '随记/整理历史.md';
@@ -199,6 +211,19 @@ export function legacyDialoguePlan(snapshot: Snapshot, sourceKey: string) {
     if (Number.isSafeInteger(value) && value >= 0) cursors.set(String(row.key).slice('review:'.length), value);
   }
   const messages = new Map<string, Row>();
+  const receiptAttachments = new Map<string, Map<string, Json>>();
+  for (const receipt of snapshot.message_receipts ?? []) {
+    if (receipt.message_id === null || receipt.message_id === undefined ||
+      !Number.isSafeInteger(Number(receipt.message_id)) || typeof receipt.attachments !== 'string') continue;
+    try {
+      const attachments: unknown = JSON.parse(receipt.attachments);
+      if (!Array.isArray(attachments)) continue;
+      const key = JSON.stringify([String(receipt.session_id), Number(receipt.message_id)]);
+      const values = receiptAttachments.get(key) ?? new Map<string, Json>();
+      for (const attachment of attachments) values.set(JSON.stringify(attachment), attachment as Json);
+      receiptAttachments.set(key, values);
+    } catch { /* Malformed attachment metadata stays intact in the original source archive. */ }
+  }
   for (const table of ['archived_messages', 'messages']) for (const row of snapshot[table] ?? []) {
     if (!['user', 'assistant'].includes(String(row.role)) || !cursors.has(String(row.session_id))) continue;
     if (!Number.isSafeInteger(Number(row.id)) || typeof row.content !== 'string' || !Number.isFinite(Date.parse(String(row.timestamp)))) continue;
@@ -207,6 +232,9 @@ export function legacyDialoguePlan(snapshot: Snapshot, sourceKey: string) {
   return {
     cursors,
     messages: [...messages.values()].sort((a, b) => Number(a.id) - Number(b.id)),
+    attachments: (row: Row): Json[] => [...(receiptAttachments.get(
+      JSON.stringify([String(row.session_id), Number(row.id)]),
+    )?.values() ?? [])],
     session: (name: string) => `legacy:${sourceKey}:${name}`,
   };
 }

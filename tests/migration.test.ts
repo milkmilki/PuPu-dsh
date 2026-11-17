@@ -48,7 +48,7 @@ test('copy import preserves natural notes, same-name people and immutable record
   const migration = new MigrationService(catalog);
   const preview = await migration.preview(old);
   assert.equal(preview.counts.person_facts, 2);
-  assert.equal(preview.counts.model_requests, undefined);
+  assert.equal(preview.counts.model_requests, 1);
   await assert.rejects(migration.confirm({ token: preview.token, name: '璐璐', speakerName: '小夫', personMapping: {}, confirmed: false }));
   const imported = await migration.confirm({ token: preview.token, name: '璐璐', speakerName: '小夫', personMapping: { owner: '小夫', guest: '同名朋友' }, confirmed: true });
   const roleRoot = catalog.rootFor(imported.role.id);
@@ -223,6 +223,64 @@ test('legacy import exposes original evidence and raw messages and imports only 
   for (const record of records) assert.equal(createHash('sha256').update(record.data).digest('hex'), record.fingerprint);
   assert.equal(records.length, Object.values(preview.counts).reduce((sum, value) => sum + value, 0));
   archived.close(); engine.close(); catalog.close();
+});
+test('legacy request and trigger history is readable evidence without resuming source work', async () => {
+  const temp = mkdtempSync(join(tmpdir(), 'pupu-legacy-job-history-')), source = legacy(temp);
+  const db = new DatabaseSync(source);
+  db.exec(`CREATE TABLE review_triggers(trigger_id TEXT,session_id TEXT,upper INTEGER,start_id INTEGER,reason TEXT,status TEXT);
+    INSERT INTO review_triggers VALUES('old-trigger','owner',1,0,'compaction','running');`);
+  db.close();
+  const catalog = new Catalog(join(temp, 'target')), migration = new MigrationService(catalog);
+  const preview = await migration.preview(source);
+  assert.equal(preview.counts.model_requests, 1);
+  assert.equal(preview.counts.review_triggers, 1);
+  const imported = await migration.confirm({
+    token: preview.token, name: '璐璐', speakerName: '小夫',
+    personMapping: { owner: '小夫', guest: '同名朋友' }, confirmed: true,
+  });
+  const engine = new NotesEngine(catalog.rootFor(imported.role.id));
+  const result = await engine.execute({ action: 'sources', path: '随记/整理历史.md', limit: 100 });
+  const sources = result.sources as { table: string; record: Record<string, unknown> }[];
+  assert.deepEqual(sources.find(row => row.table === 'model_requests')?.record,
+    { id: 1, request: '不应该运行', status: 'pending' });
+  assert.equal(sources.find(row => row.table === 'review_triggers')?.record.trigger_id, 'old-trigger');
+  assert.deepEqual(engine.listTasks(), [], 'historical requests and triggers must remain inert');
+  engine.close(); catalog.close();
+});
+test('legacy dialogue keeps only attachment receipts matching both session and message', async () => {
+  const temp = mkdtempSync(join(tmpdir(), 'pupu-legacy-attachments-')), source = legacy(temp);
+  const db = new DatabaseSync(source);
+  db.exec(`CREATE TABLE engine_meta(key TEXT,value TEXT);
+    INSERT INTO engine_meta VALUES('character_id','attachments-role'),('review:owner','0'),('review:other','0');
+    CREATE TABLE message_receipts(session_id TEXT,external_id TEXT,digest TEXT,message_id INTEGER,attachments TEXT);
+    INSERT INTO messages VALUES(1,'other','user','另一段对话的附件','2026-11-17T00:00:01Z');
+    INSERT INTO messages VALUES(2,'owner','assistant','没有有效附件','2026-11-17T00:00:02Z');`);
+  const insert = db.prepare('INSERT INTO message_receipts VALUES(?,?,?,?,?)');
+  const ownerAttachment = { type: 'image', attachment: { path: 'owner-image.png' } };
+  const otherAttachment = { type: 'file', attachment: { path: 'other-file.txt' } };
+  insert.run('owner', 'owner-external', 'a', 1, JSON.stringify([ownerAttachment]));
+  insert.run('owner', 'owner-duplicate', 'b', 1, JSON.stringify([ownerAttachment]));
+  insert.run('other', 'other-external', 'c', 1, JSON.stringify([otherAttachment]));
+  insert.run('missing-session', 'orphan', 'd', 1, JSON.stringify([{ type: 'image', attachment: 'must-not-leak' }]));
+  insert.run('owner', 'malformed', 'e', 2, '{broken');
+  insert.run('owner', 'not-an-array', 'f', 2, '{"attachment":"not-an-array"}');
+  db.close();
+  const catalog = new Catalog(join(temp, 'target')), migration = new MigrationService(catalog);
+  const preview = await migration.preview(source);
+  const imported = await migration.confirm({
+    token: preview.token, name: '璐璐', speakerName: '小夫',
+    personMapping: { owner: '小夫', guest: '同名朋友' }, confirmed: true,
+  });
+  const root = catalog.rootFor(imported.role.id), engine = new NotesEngine(root);
+  const dialogue = engine.db.prepare('SELECT text,attachments FROM dialogue ORDER BY seq').all() as { text: string; attachments: string }[];
+  assert.deepEqual(JSON.parse(dialogue.find(row => row.text === '不要加香菜')!.attachments), [ownerAttachment]);
+  assert.deepEqual(JSON.parse(dialogue.find(row => row.text === '另一段对话的附件')!.attachments), [otherAttachment]);
+  assert.deepEqual(JSON.parse(dialogue.find(row => row.text === '没有有效附件')!.attachments), []);
+  const archive = new DatabaseSync(join(root, 'migration.sqlite'), { readOnly: true });
+  assert.equal((archive.prepare("SELECT COUNT(*) AS n FROM records WHERE table_name='message_receipts'").get() as { n: number }).n, 6);
+  const sources = await engine.execute({ action: 'sources', path: '随记/原始对话/2026-11-17.md', limit: 100 });
+  assert.ok((sources.sources as { table: string }[]).some(row => row.table === 'message_receipts'));
+  archive.close(); engine.close(); catalog.close();
 });
 test('prepared activation rolls forward after rename interruption without deleting the prior role', async () => {
   const temp = mkdtempSync(join(tmpdir(), 'pupu-activate-'));

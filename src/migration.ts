@@ -138,7 +138,7 @@ export class MigrationService {
             const result = engine.captureDialogue({
               sessionId, messageId: `legacy:${oldId}`, party: row.role === 'assistant' ? 'assistant' : 'human',
               speaker: String(row.speaker_name || mapping[String(row.speaker_key)] || (row.role === 'assistant' ? role.name : role.speakerName)),
-              text: String(row.content), at: String(row.timestamp),
+              text: String(row.content), attachments: plan.attachments(row), at: String(row.timestamp),
             });
             upper.set(sessionId, Math.max(upper.get(sessionId) ?? 0, result.seq));
             if (oldId <= plan.cursors.get(String(row.session_id))!)

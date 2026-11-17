@@ -1,6 +1,6 @@
 {
   "name": "dsh-pupu-notes",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Independent character notebooks and autonomous memory tools for DeepSeek Harness",
   "type": "module",
   "license": "MIT",

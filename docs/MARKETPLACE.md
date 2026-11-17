@@ -2,7 +2,8 @@
 
 名称：蒲蒲笔记 / PuPu Notes  
 包名：dsh-pupu-notes  
-版本：0.1.1  
+版本：0.1.2
+
 许可证：MIT  
 已验证宿主：官方 DeepSeek Harness 0.2.1-rc.2 Web UI  
 运行时：Node.js 24，Windows x64 已实测  
