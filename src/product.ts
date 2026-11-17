@@ -71,11 +71,25 @@ export class ProductService {
     if (now.getHours() < 3) return;
     const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     for (const role of this.roles()) {
+      let captureFailed = false;
       for (const binding of this.bindings().filter(binding => binding.roleId === role.id)) {
-        await this.adapter.flushSession?.(binding.sessionId);
+        try { await this.adapter.flushSession?.(binding.sessionId); }
+        catch (error) {
+          this.reportHostError(binding.sessionId, error instanceof Error ? error.message : String(error));
+          captureFailed = true;
+        }
       }
-      await (await this.engine(role.id)).admin('registerDaily', { day });
-      this.runner.wake(role.id);
+      // Do not let a missing source record advance this role's daily boundary.
+      // Other roles and the Host recovery UI must remain available.
+      if (captureFailed) continue;
+      const errorKey = `daily:${role.id}`;
+      try {
+        await (await this.engine(role.id)).admin('registerDaily', { day });
+        this.hostErrors.delete(errorKey);
+        this.runner.wake(role.id);
+      } catch (error) {
+        this.reportHostError(errorKey, error instanceof Error ? error.message : String(error));
+      }
     }
   }
   async notifyTrigger(roleId: string, trigger: Trigger) {
@@ -134,7 +148,8 @@ export class ProductService {
         ...(!role?.memoryModel && !role?.lastModel && role ? { waitingReason: '尚未选择记忆模型。可先创建角色会话，或在角色设置中指定整理模型。' } : {}),
         ...(this.hostErrors.size ? { error: [...this.hostErrors].map(([session, error]) => {
           const binding = this.binding(session);
-          return `${binding ? this.role(binding.roleId).name : '日常整理'}：${error}`;
+          const roleId = binding?.roleId ?? (session.startsWith('daily:') ? session.slice(6) : undefined);
+          return `${roleId ? this.role(roleId).name : '日常整理'}：${error}`;
         }).join('\n') } : {}),
       };
     }
@@ -159,14 +174,17 @@ export class ProductService {
     if (request.action === 'retry' && input.capture === true) {
       const recovered: string[] = [];
       for (const sessionId of [...this.hostErrors.keys()]) {
+        if (sessionId === 'daily' || sessionId.startsWith('daily:')) continue;
         if (this.binding(sessionId)) {
           if (!this.adapter.replaySession) throw new Error('当前宿主不支持重新同步，请重启宿主以回放对话。');
           await this.adapter.replaySession(sessionId);
-        } else if (sessionId === 'daily') await this.tick();
+        }
         this.hostErrors.delete(sessionId);
         recovered.push(sessionId);
       }
-      return { status: 'replayed', sessions: recovered.length };
+      await this.tick();
+      this.hostErrors.delete('daily');
+      return { status: 'replayed', sessions: recovered.length, pendingErrors: this.hostErrors.size };
     }
     if (!request.roleId) throw new Error('请先选择角色');
     const role = this.role(request.roleId);

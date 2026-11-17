@@ -57,7 +57,7 @@ export function Dashboard({ api, openSession, close }: Props) {
     {snapshot?.error && <div role="alert" className="pn-alert">{snapshot.error}
       <button disabled={busy} onClick={() => void run(async () => {
         await api({ action: 'retry', input: { capture: true } });
-        setNotice('已从 DSH 持久化记录重新同步对话。');
+        setNotice('已重试对话同步与日常调度；仍未恢复的错误会继续显示。');
       })}>重新同步对话</button>
     </div>}
     {snapshot && typeof (snapshot as UiState & { waitingReason?: string }).waitingReason === 'string' &&
