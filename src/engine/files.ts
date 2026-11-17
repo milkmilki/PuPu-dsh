@@ -18,6 +18,7 @@ export interface FilePlan {
   deleteDirectories: string[];
   roleCard?: string;
   aliases?: { from: string; to: string }[];
+  directoryReads?: { path: string; revision: string }[];
 }
 
 /** Reject symlinks and Windows junctions at every traversed component. */

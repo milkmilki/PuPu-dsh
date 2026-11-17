@@ -54,7 +54,12 @@ export function Dashboard({ api, openSession, close }: Props) {
         onClick={() => setPage(tab.id)}>{tab.label}</button>)}
     </nav>
     {error && <div role="alert" className="pn-alert">{error}<button onClick={() => void run(() => refresh())}>重试</button></div>}
-    {snapshot?.error && <div role="alert" className="pn-alert">{snapshot.error}</div>}
+    {snapshot?.error && <div role="alert" className="pn-alert">{snapshot.error}
+      <button disabled={busy} onClick={() => void run(async () => {
+        await api({ action: 'retry', input: { capture: true } });
+        setNotice('已从 DSH 持久化记录重新同步对话。');
+      })}>重新同步对话</button>
+    </div>}
     {snapshot && typeof (snapshot as UiState & { waitingReason?: string }).waitingReason === 'string' &&
       <div role="status" className="pn-notice">{(snapshot as UiState & { waitingReason: string }).waitingReason}</div>}
     {role && snapshot?.stats.roleCardMissing === true && <div role="status" className="pn-notice">

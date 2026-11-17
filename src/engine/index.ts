@@ -145,6 +145,14 @@ export class NotesEngine implements RoleEngine {
           this.db.prepare('INSERT OR IGNORE INTO provenance(path,source_key,operation_id) SELECT ?,source_key,operation_id FROM provenance WHERE path=?')
             .run(alias.to, alias.from);
         }
+        const scope = operation.task_id ? `task:${operation.task_id}` : operation.actor ? `actor:${operation.actor}` : undefined;
+        if (scope) for (const previous of plan.directoryReads ?? []) {
+          const current = this.db.prepare('SELECT revision FROM read_revisions WHERE scope=? AND path=?').get(scope, previous.path) as { revision: string } | undefined;
+          if (current?.revision !== previous.revision) continue;
+          if (this.files.kind(previous.path) === 'directory')
+            this.db.prepare('UPDATE read_revisions SET revision=? WHERE scope=? AND path=?').run(this.pathRevision(previous.path), scope, previous.path);
+          else this.db.prepare('DELETE FROM read_revisions WHERE scope=? AND path=?').run(scope, previous.path);
+        }
         this.db.prepare("UPDATE operations SET status='applied',error=NULL WHERE id=?").run(operation.id);
       });
     } catch (error) {
@@ -164,6 +172,13 @@ export class NotesEngine implements RoleEngine {
       }
       if (context.taskId) this.tasks.assertActive(context.taskId);
       const { plan, result } = planBuilder();
+      const scope = this.readScope(context);
+      if (scope) {
+        const affected = [...plan.changes.map(change => change.path), ...plan.createDirectories, ...plan.deleteDirectories];
+        plan.directoryReads = (this.db.prepare('SELECT path,revision FROM read_revisions WHERE scope=?').all(scope) as { path: string; revision: string }[])
+          .filter(previous => affected.some(path => !previous.path || path === previous.path || path.startsWith(`${previous.path}/`)) &&
+            this.files.kind(previous.path) === 'directory' && this.pathRevision(previous.path) === previous.revision);
+      }
       const at = timestamp();
       // The plan and both file states are durable before the first filesystem mutation.
       this.db.prepare('INSERT INTO operations(id,fingerprint,kind,status,plan,result,task_id,actor,at) VALUES (?,?,?,?,?,?,?,?,?)')
@@ -181,10 +196,16 @@ export class NotesEngine implements RoleEngine {
   private readScope(context: OperationContext): string | undefined {
     return context.taskId ? `task:${context.taskId}` : context.actor ? `actor:${context.actor}` : undefined;
   }
+  private pathRevision(path: string): string {
+    if (this.files.kind(path) === 'file') return digest(this.files.read(path));
+    const tree = (directory: string): Json[] => this.files.list(directory).map(entry =>
+      entry.kind === 'directory' ? [entry.path, 'directory', tree(entry.path)] : [entry.path, 'file', digest(this.files.read(entry.path))]);
+    return digest(JSON.stringify(tree(path)));
+  }
   private checkRevision(path: string, revision: string | undefined, context: OperationContext): void {
     const scope = this.readScope(context);
     if (revision === undefined && scope) revision = (this.db.prepare('SELECT revision FROM read_revisions WHERE scope=? AND path=?').get(scope, path) as { revision: string } | undefined)?.revision;
-    if (revision !== undefined && digest(this.files.read(path)) !== revision)
+    if (revision !== undefined && this.pathRevision(path) !== revision)
       throw new NotesError('STALE_REVISION', '笔记已经被修改，请重新读取后再编辑。');
   }
   private readSource(context: OperationContext, key: string, content: string, metadata: JsonObject): void {
@@ -232,7 +253,7 @@ export class NotesEngine implements RoleEngine {
       case 'delete': return this.mutate('delete', command as unknown as Json, () => {
         const kind = this.files.kind(path);
         if (!kind) throw new NotesError('NOT_FOUND', '找不到要删除的笔记或目录。');
-        if (kind === 'file') this.checkRevision(path, command.revision, context);
+        this.checkRevision(path, command.revision, context);
         return {
           plan: {
             changes: this.files.walk(path).map(file => ({ path: file.path, before: file.content, after: null })),
@@ -250,6 +271,9 @@ export class NotesEngine implements RoleEngine {
       const offset = pageNumber(command.offset, 0, Number.MAX_SAFE_INTEGER), limit = pageNumber(command.limit, 50, 100);
       if (!limit) throw new NotesError('INVALID_PAGE', '每页条目数量必须大于零。');
       const entries = this.files.list(path), page = entries.slice(offset, offset + limit);
+      const scope = this.readScope(context);
+      if (scope) this.db.prepare('INSERT INTO read_revisions(scope,path,revision) VALUES(?,?,?) ON CONFLICT(scope,path) DO UPDATE SET revision=excluded.revision')
+        .run(scope, path, this.pathRevision(path));
       return { kind, path, entries: page, total: entries.length, offset, nextOffset: offset + page.length < entries.length ? offset + page.length : null };
     }
     if (kind !== 'file' && !snapshot) throw new NotesError('NOT_FOUND', '找不到这个笔记。');
@@ -361,7 +385,7 @@ export class NotesEngine implements RoleEngine {
       if (!to || !this.files.kind(path)) throw new NotesError('NOT_FOUND', '移动需要现有源路径和目标相对路径。');
       if (to === path || to.startsWith(`${path}/`)) throw new NotesError('INVALID_MOVE', '不能把目录移动到自身内部。');
       if (this.files.kind(to)) throw new NotesError('ALREADY_EXISTS', '目标路径已经存在。');
-      if (this.files.kind(path) === 'file') this.checkRevision(path, command.revision, context);
+      this.checkRevision(path, command.revision, context);
       const moving = this.files.walk(path), moved = new Map(moving.map(file => [file.path, to + file.path.slice(path.length)]));
       const sourceDirectories = this.files.kind(path) === 'directory' ? this.files.directories(path) : [];
       for (const directory of sourceDirectories) moved.set(directory, to + directory.slice(path.length));

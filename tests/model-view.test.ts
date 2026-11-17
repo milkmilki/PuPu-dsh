@@ -81,3 +81,26 @@ test('daily manifest stays immutable when another actor shortens an unread note'
     assert.equal(engine.finishTask(task.id).status, 'completed');
   } finally { engine.close(); }
 });
+test('hidden directory CAS rejects another actor new child and allows reread or the models own child edits', async () => {
+  const engine = new NotesEngine(mkdtempSync(join(tmpdir(), 'notes-directory-cas-')));
+  try {
+    await engine.execute({ action: 'create', path: '往事/最初.md', content: '最初的笔记。' });
+    await engine.execute({ action: 'view', path: '往事' }, { actor: 'chat:a' });
+    await engine.execute({ action: 'create', path: '往事/别人新增.md', content: '新增的内容。' }, { actor: 'chat:b' });
+    await assert.rejects(engine.execute({ action: 'delete', path: '往事' }, { actor: 'chat:a' }), /重新读取/);
+    await assert.rejects(engine.execute({ action: 'move', path: '往事', to: '历史' }, { actor: 'chat:a' }), /重新读取/);
+    // An unrelated own edit cannot silently accept the unseen new child.
+    await engine.execute({ action: 'edit', path: '往事/最初.md', oldText: '最初', newText: '原来的' }, { actor: 'chat:a' });
+    await assert.rejects(engine.execute({ action: 'move', path: '往事', to: '历史' }, { actor: 'chat:a' }), /重新读取/);
+    await engine.execute({ action: 'view', path: '往事' }, { actor: 'chat:a' });
+    await engine.execute({ action: 'create', path: '往事/自己新增.md', content: '自己刚写的。' }, { actor: 'chat:a' });
+    await engine.execute({ action: 'move', path: '往事', to: '历史' }, { actor: 'chat:a' });
+    assert.equal(engine.files.read('历史/别人新增.md'), '新增的内容。');
+    await engine.execute({ action: 'view', path: '历史' }, { actor: 'chat:a' });
+    await engine.execute({ action: 'edit', path: '历史/别人新增.md', oldText: '新增的内容。', newText: '别人修改过的内容。' }, { actor: 'chat:b' });
+    await assert.rejects(engine.execute({ action: 'delete', path: '历史' }, { actor: 'chat:a' }), /重新读取/);
+    await engine.execute({ action: 'view', path: '历史' }, { actor: 'chat:a' });
+    await engine.execute({ action: 'delete', path: '历史' }, { actor: 'chat:a' });
+    assert.equal(engine.files.kind('历史'), null);
+  } finally { engine.close(); }
+});

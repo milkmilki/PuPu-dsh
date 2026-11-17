@@ -172,3 +172,30 @@ test('retry uses the currently selected memory model while preserving completed 
     assert.equal((await engine.admin<Task>('getTask', { taskId: failed.id })).status, 'completed');
   } finally { await product.dispose(); }
 });
+
+test('a failed Host capture can replay persisted dialogue and clear the visible error without restart', async () => {
+  let product!: ProductService;
+  product = new ProductService(mkdtempSync(join(tmpdir(), 'notes-capture-retry-')), {
+    createSession: async () => 'recoverable-session',
+    generate: async () => { throw new Error('No model should run without a trigger'); },
+    replaySession: async sessionId => {
+      const binding = product.binding(sessionId)!;
+      await (await product.engine(binding.roleId)).admin('captureDialogue', { input: {
+        sessionId, messageId: 'durable-source', party: 'human', speaker: binding.speakerName,
+        text: '来自 DSH 持久化记录的对话。', at: new Date().toISOString(),
+      } });
+    },
+  }, { engineEntry: resolve('dist/mcp.mjs') });
+  try {
+    const role = await product.dispatch({ action: 'createRole', input: { name: '璐璐', speakerName: '知夏姐姐' } }) as Role;
+    await product.dispatch({ action: 'createSession', roleId: role.id });
+    product.reportHostError('recoverable-session', '模拟中断');
+    const before = await product.dispatch({ action: 'state', roleId: role.id }) as { error?: string };
+    assert.match(before.error!, /璐璐：模拟中断/);
+    await product.dispatch({ action: 'retry', input: { capture: true } });
+    const after = await product.dispatch({ action: 'state', roleId: role.id }) as { error?: string; stats: JsonObject };
+    assert.equal(after.error, undefined);
+    const stats = await (await product.engine(role.id)).admin<JsonObject>('stats');
+    assert.equal(stats.dialogue, 1);
+  } finally { await product.dispose(); }
+});

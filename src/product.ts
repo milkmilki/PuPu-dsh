@@ -11,6 +11,7 @@ export interface ProductAdapter {
   generate: Generate;
   createSession(input: { roleId: string; name: string; speakerName: string; cwd?: string; workspaceId?: string; model?: ModelRoute }): Promise<string>;
   flushSession?(sessionId: string): Promise<void>;
+  replaySession?(sessionId: string): Promise<void>;
 }
 export class ProductService {
   readonly catalog: Catalog;
@@ -131,7 +132,10 @@ export class ProductService {
         tasks, stats, taskTranscript,
         modelReady: !!(role?.memoryModel || role?.lastModel),
         ...(!role?.memoryModel && !role?.lastModel && role ? { waitingReason: '尚未选择记忆模型。可先创建角色会话，或在角色设置中指定整理模型。' } : {}),
-        ...(this.hostErrors.size ? { error: [...this.hostErrors].map(([session, error]) => `${session}: ${error}`).join('\n') } : {}),
+        ...(this.hostErrors.size ? { error: [...this.hostErrors].map(([session, error]) => {
+          const binding = this.binding(session);
+          return `${binding ? this.role(binding.roleId).name : '日常整理'}：${error}`;
+        }).join('\n') } : {}),
       };
     }
     if (request.action === 'createRole') {
@@ -151,6 +155,18 @@ export class ProductService {
         : this.migration.confirm(input as unknown as ImportSelection));
       if (result.role.memoryModel || result.role.lastModel) this.runner.wake(result.role.id);
       return result;
+    }
+    if (request.action === 'retry' && input.capture === true) {
+      const recovered: string[] = [];
+      for (const sessionId of [...this.hostErrors.keys()]) {
+        if (this.binding(sessionId)) {
+          if (!this.adapter.replaySession) throw new Error('当前宿主不支持重新同步，请重启宿主以回放对话。');
+          await this.adapter.replaySession(sessionId);
+        } else if (sessionId === 'daily') await this.tick();
+        this.hostErrors.delete(sessionId);
+        recovered.push(sessionId);
+      }
+      return { status: 'replayed', sessions: recovered.length };
     }
     if (!request.roleId) throw new Error('请先选择角色');
     const role = this.role(request.roleId);

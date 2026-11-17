@@ -29,7 +29,9 @@ dsh plugin --profile web add "D:\ProjectICreate\PuPuBot\pupu-notes\artifacts\dsh
 node .\dist\mcp.mjs --root "C:\Users\<你>\.dsh\data\pupu-notes\roles\<角色ID>" --name "璐璐"
 ```
 
-MCP 使用 stdio，模型可见工具名为 `notes`。它和 DSH 插件共用 Markdown 和来源库，但不会自动替宿主注入完整记忆。
+MCP 使用 stdio，模型可见工具名为 `notes`。它和 DSH 插件共用 Markdown 和来源库，但不会自动替宿主注入完整记忆。同一角色目录同时只允许一个记忆引擎；将同一库交给独立宿主前，先停止占用它的 DSH 插件，或使用导出的独立副本。
+
+发行目录另有 `pupu-notes-mcp-0.1.0.zip`，供独立宿主使用。解压后将 Node.js 24 和 `mcp.mjs --root <角色目录>` 配置为 stdio MCP 启动命令。DSH 安装使用 `.tgz`。
 
 ## 更新
 

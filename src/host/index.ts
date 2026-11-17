@@ -115,6 +115,19 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
 
   product = new ProductService(dataDirectory, {
     flushSession: async sessionId => { await chains.get(sessionId); },
+    replaySession: async sessionId => {
+      const binding = bindingFor(sessionId);
+      if (!binding) throw new Error('会话没有绑定到蒲蒲笔记。');
+      const previous = chains.get(sessionId) ?? Promise.resolve();
+      const recovery = previous.catch(() => {}).then(async () => {
+        const inspection = await ctx.sessionController.inspect(SessionId(sessionId));
+        for (const event of inspection.events) await observe(binding, event);
+      });
+      // Publish the recovery barrier before the first I/O; new live events
+      // append behind it rather than overtaking replayed compaction markers.
+      chains.set(sessionId, recovery);
+      try { await recovery; } catch (error) { report(sessionId, error); throw error; }
+    },
     generate: request => generateMemoryResponse(options => ctx.llm.stream(options), request),
     createSession: async request => {
       const sessionId = SessionId(randomUUID());
