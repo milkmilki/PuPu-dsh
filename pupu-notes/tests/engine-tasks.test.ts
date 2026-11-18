@@ -1,0 +1,85 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { NotesFiles } from '../src/engine/files.js';
+import { openDatabase } from '../src/engine/database.js';
+import { TaskStore } from '../src/engine/tasks.js';
+
+const setup = () => {
+  const root = mkdtempSync(join(tmpdir(), 'notes-tasks-'));
+  const db = openDatabase(root), files = new NotesFiles(join(root, 'notes'));
+  return { db, files, store: new TaskStore(db, files) };
+};
+test('task boundary is immutable, duplicate capture is idempotent, cursor advances only after all input read', () => {
+  const { db, store } = setup();
+  const input = { sessionId: 'a', messageId: 'one', party: 'human' as const, speaker: '小夫', text: '明天去海边', at: new Date().toISOString() };
+  assert.equal(store.capture(input).inserted, true);
+  assert.equal(store.capture(input).inserted, false);
+  const first = store.register({ triggerId: 'compact-1', sessionId: 'a', reason: 'compaction' });
+  assert.equal(store.register({ triggerId: 'compact-1', sessionId: 'a', reason: 'compaction' }).id, first.id);
+  store.capture({ ...input, messageId: 'later', text: '触发后到达的新消息' });
+  assert.equal(store.next()!.id, first.id);
+  assert.throws(() => store.finish(first.id), /通读/);
+  const page = store.sourcePage(first.id, 0, 10);
+  assert.equal((page.messages as unknown[]).length, 1);
+  assert.equal(store.finish(first.id).status, 'completed');
+  const second = store.register({ triggerId: 'manual-2', sessionId: 'a', reason: 'manual' });
+  assert.equal(second.lowerBound, first.upperBound);
+  assert.equal(second.progress.sourceMessages, 1);
+  db.close();
+});
+test('failed task blocks later sessions, restart resumes running and read coverage', () => {
+  const { db, files, store } = setup();
+  for (const sessionId of ['a', 'b'])
+    store.capture({ sessionId, messageId: '1', party: 'human', speaker: '小夫', text: sessionId, at: new Date().toISOString() });
+  const a = store.register({ triggerId: 'a', sessionId: 'a', reason: 'compaction' });
+  const b = store.register({ triggerId: 'b', sessionId: 'b', reason: 'compaction' });
+  assert.equal(store.next()!.id, a.id);
+  store.sourcePage(a.id);
+  store.setStatus(a.id, 'failed', '模型超时');
+  assert.equal(store.next(), null);
+  store.retry(a.id);
+  assert.equal(store.next()!.id, a.id);
+  const restarted = new TaskStore(db, files);
+  assert.equal(restarted.get(a.id).status, 'queued');
+  assert.equal(restarted.next()!.progress.readMessages, 1);
+  restarted.finish(a.id);
+  assert.equal(restarted.next()!.id, b.id);
+  db.close();
+});
+test('daily task queues dialogue first and requires real complete note reads', () => {
+  const { db, files, store } = setup();
+  files.apply({ changes: [{ path: '目录.md', before: null, after: '第一行\n第二行' }], createDirectories: [], deleteDirectories: [] });
+  store.capture({ sessionId: 'a', messageId: '1', party: 'human', speaker: '小夫', text: '记忆', at: new Date().toISOString() });
+  const daily = store.registerDaily('2026-11-17');
+  const backlog = store.next()!;
+  assert.notEqual(backlog.id, daily.id);
+  store.sourcePage(backlog.id); store.finish(backlog.id);
+  assert.equal(store.next()!.id, daily.id);
+  assert.throws(() => store.finish(daily.id), /通读/);
+  store.recordFileRead(daily.id, '目录.md', files.read('目录.md'), 1, 1);
+  assert.throws(() => store.finish(daily.id), /通读/);
+  store.recordFileRead(daily.id, '目录.md', files.read('目录.md'), 2, 1);
+  assert.equal(store.finish(daily.id).status, 'completed');
+  assert.equal(store.registerDaily('2026-11-17').id, daily.id);
+  db.close();
+});
+test('assistant replay after a role rename preserves the captured old name and accepts new messages under the new name', () => {
+  const { db, store } = setup();
+  const message = { sessionId: 'a', messageId: 'assistant-1', party: 'assistant' as const, speaker: '璐璐', text: '还记得那次日落。', at: new Date().toISOString() };
+  store.capture(message);
+  const replay = store.capture({ ...message, speaker: '新名字' });
+  assert.equal(replay.inserted, false);
+  store.capture({ ...message, messageId: 'assistant-2', speaker: '新名字', text: '这是改名后的新回复。' });
+  const task = store.register({ triggerId: 'rename', sessionId: 'a', reason: 'manual' });
+  store.next();
+  const page = store.sourcePage(task.id);
+  assert.deepEqual((page.messages as { speaker: string }[]).map(row => row.speaker), ['璐璐', '新名字']);
+  assert.throws(() => store.capture({ ...message, speaker: '新名字', text: '被修改过的旧内容。' }), /拒绝覆盖/);
+  const human = { ...message, party: 'human' as const, messageId: 'human-1', speaker: '小夫' };
+  store.capture(human);
+  assert.throws(() => store.capture({ ...human, speaker: '其他人' }), /拒绝覆盖/);
+  db.close();
+});
