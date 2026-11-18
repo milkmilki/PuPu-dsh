@@ -12,7 +12,7 @@ for (const entry of ['index', 'remote', 'cli'])
 const client = await build({
   ...shared, sourcemap: false, platform: 'browser', format: 'cjs',
   entryPoints: ['src/client.tsx'], write: false, loader: { '.css': 'text' },
-  external: ['@deepseek-ai/*', 'react', 'react/*'],
+  external: ['@deepseek-ai/cordis', 'react', 'react/*'],
   define: { 'process.env.NODE_ENV': '"production"' },
 })
 await writeFile('dist/client.js',

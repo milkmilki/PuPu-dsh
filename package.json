@@ -1,6 +1,6 @@
 {
   "name": "dsh-qq",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "QQ private-message bridge for DSH and PuPu Notes",
   "license": "UNLICENSED",

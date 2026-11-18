@@ -1,4 +1,4 @@
-import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol'
+import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-info'
 import { z } from 'zod'
 export const requestSchema = z.object({ action: z.string().min(1), args: z.record(z.string(), z.json()).default({}) })
 const inputCodec = { mode: 'strict' as const, typeSymbol: 'QqRequest', create: () => requestSchema }

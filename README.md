@@ -1,8 +1,10 @@
-# DSH QQ Bridge 0.1.4
+# DSH QQ Bridge 0.1.5
 
 Independent QQ private-message gateway and DSH plugin. Requires Node.js 24+, DSH 0.2.1-rc.2, PuPu Notes (`dsh-pupu-notes` 0.1.2+) and a OneBot v11 implementation such as NapCat. No Python runtime is added by this project.
 
 This version uses the same role notebooks and `pupu_notes` tools as Web conversations. It calls the Notes Host service directly and does not call the old `pupu` service or write the old memory database. Source recovery and migration details are in [docs/NOTES-MIGRATION.md](docs/NOTES-MIGRATION.md).
+
+Version 0.1.5 fixes browser activation by bundling the pure Typert remote metadata helper and Zod into the UI artifact. The browser requests only DSH's baseline React/Cordis modules.
 
 ## Install
 
