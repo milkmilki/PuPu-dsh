@@ -1,0 +1,87 @@
+{
+  "fromPackage": "dsh-qq@0.1.3",
+  "installed": "C:/Users/57859/.dsh/profiles/web/node_modules/dsh-qq",
+  "referenceSnapshot": "D:/Temp/DeepseekHarness/update-verification/dsh-qq-0.1.3/source-before",
+  "files": [
+    {
+      "path": "src/cli.ts",
+      "map": "cli.js.map",
+      "sha256": "b938594df80c2c9e29c24f9de61ac1803bac22b3ed5005e65571d91106898b0b"
+    },
+    {
+      "path": "src/store.ts",
+      "map": "index.js.map",
+      "sha256": "7463495148970254a509179ace0cf57448a3ad08936a6c34800500859c622b42"
+    },
+    {
+      "path": "src/protocol.ts",
+      "map": "index.js.map",
+      "sha256": "7d9f6246d45d3b4885f26d52078a20d34d09bd41f9192031d01142d91165cb5a"
+    },
+    {
+      "path": "src/batching.ts",
+      "map": "index.js.map",
+      "sha256": "5ecac7e6de85ca23aef7fc739a873b4be86606a1114da437d0fcbd4ed853ade6"
+    },
+    {
+      "path": "src/types.ts",
+      "map": "index.js.map",
+      "sha256": "2cabb4a47d5f651f5599b9b9e164c6c4e87fd20e9c7883f08e3212516835046a"
+    },
+    {
+      "path": "src/config.ts",
+      "map": "index.js.map",
+      "sha256": "f725d11fc5fc5fee31c2ddcd79cfe2a28a083fc61769cd5702768f011ddd9616"
+    },
+    {
+      "path": "src/gateway.ts",
+      "map": "index.js.map",
+      "sha256": "335b54647c52132f343aea57e2ac99cc6199fcdfd0afddc51d43c6063fdfda99"
+    },
+    {
+      "path": "src/onebot.ts",
+      "map": "index.js.map",
+      "sha256": "5514e9f685dfc2e2ab88af7352675975038524fb931e73990a6df4da2975b9b0"
+    },
+    {
+      "path": "src/images.ts",
+      "map": "index.js.map",
+      "sha256": "2659b99b587bfe8ec9e197fd7d35fd1b7544aac8526c5aba2a6fd14c481d5206"
+    },
+    {
+      "path": "src/client.tsx",
+      "map": "client.js.map",
+      "sha256": "7f547338fe08af06f9aed667671df533108ccaa5ce5e9ebc895bcfbbb9c19abc"
+    },
+    {
+      "path": "src/remote.ts",
+      "map": "remote.js.map",
+      "sha256": "66d8044d370aa8bb863de3d565c60a9927c33a5b71389c1c8ab6b262e5e64f25"
+    },
+    {
+      "path": "src/ui/settings.tsx",
+      "map": "client.js.map",
+      "sha256": "b97d5d4609569435b7e5b5594508ce07a5dc6f232c55e156364e72c49c8f58d9"
+    },
+    {
+      "path": "src/ui/styles.css",
+      "map": "client.js.map",
+      "sha256": "b76e12669ec3f949e659da38579a07f21c2701a4304df541e2bb6ad2a9431f7c"
+    },
+    {
+      "path": "src/index.ts",
+      "map": "index.js.map",
+      "sha256": "0b287046739a22acad595e0e3e0c34b13458552a553601bfa1ab2cb41401dedf"
+    },
+    {
+      "path": "src/adapter.ts",
+      "map": "index.js.map",
+      "sha256": "081e2161daee725c788d80b9f3240d5ad8041e1cc97446c8115315609064f988"
+    },
+    {
+      "path": "src/final-reply.ts",
+      "map": "index.js.map",
+      "sha256": "af5ece6a8e32bfd4ee8d6f9d6bca451459f16813798bf5a807da59621c1a65c2"
+    }
+  ]
+}
