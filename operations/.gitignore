@@ -1,0 +1,25 @@
+# Version only explicitly listed operational source files.
+# Memories, credentials, logs, snapshots, plans and generated reports stay local.
+/*
+!/.gitignore
+!/README.md
+!/start-dsh.ps1
+
+!/pupu-notes-activation-2026-11-18T01-31-10-926Z/
+/pupu-notes-activation-2026-11-18T01-31-10-926Z/*
+!/pupu-notes-activation-2026-11-18T01-31-10-926Z/start-web.ps1
+!/pupu-notes-activation-2026-11-18T01-31-10-926Z/verify-live.mjs
+!/pupu-notes-activation-2026-11-18T01-31-10-926Z/finalize-profile.mjs
+!/pupu-notes-activation-2026-11-18T01-31-10-926Z/migrate-qq-notes.mjs
+!/pupu-notes-activation-2026-11-18T01-31-10-926Z/count-test-log.mjs
+
+!/relocation-20261118/
+/relocation-20261118/*
+!/relocation-20261118/README.md
+!/relocation-20261118/MIGRATION-REPORT.md
+!/relocation-20261118/sdk-tools.mjs
+!/relocation-20261118/relocate-workspaces.mjs
+!/relocation-20261118/relocation.test.mjs
+!/relocation-20261118/snapshot-offline.mjs
+!/relocation-20261118/cleanup-precheck.mjs
+!/relocation-20261118/cleanup-c-work-copies.ps1
