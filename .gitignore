@@ -1,0 +1,30 @@
+# Dependencies, generated releases and local verification output.
+node_modules/
+dist/
+artifacts/
+coverage/
+.test-data/
+.build/
+build/
+*.tgz
+*.zip
+
+# Local credentials and runtime data.
+.env
+.env.*
+!.env.example
+data/
+logs/
+workspaces/
+*.log
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.pupumem
+*.pupunotes
+*.bak
+*.tmp
+
+.DS_Store
+Thumbs.db
