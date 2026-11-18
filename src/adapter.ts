@@ -78,6 +78,8 @@ export class Adapter {
     if (this.ctx.workspaceRegistry.archivedSessionIds.includes(route.sessionId)) throw new Error('对话已归档，请先在 DSH 恢复对话')
     const inspection = await this.ctx.sessionController.inspect(route.sessionId, this.stop.signal)
     if (resolve(inspection.meta.cwd) !== resolve(workspace.path)) throw new Error('对话不属于绑定的工作区')
+    const loaded = await this.ctx.sessionController.resolveAgent(route.sessionId)
+    if (loaded.error || !loaded.agent) throw new Error('DSH 无法恢复已绑定对话')
     const state = await this.notes('sessionState', { sessionId: route.sessionId })
     this.assertIdentity(state.binding, route)
     if (state.needsRepair) throw new Error('蒲蒲笔记的当前身份需要修复，请检查后恢复')
