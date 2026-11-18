@@ -27,9 +27,9 @@ DSH 压缩开始信号和手动操作可以触发独立的后台记忆整理；�
 
 ```powershell
 cd pupu-notes
-npm install
-npm run check
-npm run build
+pnpm install --frozen-lockfile
+pnpm run check
+pnpm run build
 ```
 
 QQ 插件在自己的目录使用 `npm ci`、`npm run typecheck`、`npm test` 和
